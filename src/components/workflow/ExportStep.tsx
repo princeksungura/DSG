@@ -1,22 +1,145 @@
+import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useWorkflow } from '@/contexts/WorkflowContext';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { generatePattern, patternToSVG, patternToDXF } from '@/lib/patternEngine';
+import jsPDF from 'jspdf';
+import { Download, FileText, Settings, Image, Loader2 } from 'lucide-react';
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 export default function ExportStep() {
   const { state } = useWorkflow();
+  const [exporting, setExporting] = useState<string | null>(null);
 
-  const handleExport = (format: string) => {
-    toast.success(`${format} export initiated`, {
-      description: `Your ${state.garmentType} pattern is being prepared for ${format} download.`,
-    });
+  const pattern = useMemo(() => {
+    if (!state.garmentType) return null;
+    return generatePattern(state.measurements, state.fabric, state.garmentType);
+  }, [state.measurements, state.fabric, state.garmentType]);
+
+  const handleExportSVG = () => {
+    if (!pattern || !state.garmentType) return;
+    setExporting('SVG');
+    try {
+      const svgStr = patternToSVG(pattern, state.garmentType, state.fabric.name);
+      const blob = new Blob([svgStr], { type: 'image/svg+xml' });
+      downloadBlob(blob, `dsgwear-${state.garmentType}-pattern.svg`);
+      toast.success('SVG exported successfully');
+    } catch (e) {
+      toast.error('Export failed');
+    }
+    setExporting(null);
+  };
+
+  const handleExportDXF = () => {
+    if (!pattern) return;
+    setExporting('DXF');
+    try {
+      const dxfStr = patternToDXF(pattern);
+      const blob = new Blob([dxfStr], { type: 'application/dxf' });
+      downloadBlob(blob, `dsgwear-${state.garmentType}-pattern.dxf`);
+      toast.success('DXF exported successfully');
+    } catch (e) {
+      toast.error('Export failed');
+    }
+    setExporting(null);
+  };
+
+  const handleExportPDF = async () => {
+    if (!pattern || !state.garmentType) return;
+    setExporting('PDF');
+    try {
+      const svgStr = patternToSVG(pattern, state.garmentType, state.fabric.name);
+
+      // Render SVG to canvas then to PDF
+      const img = new window.Image();
+      const svgBlob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(svgBlob);
+
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => {
+          try {
+            const canvas = document.createElement('canvas');
+            const scale = 2; // high res
+            canvas.width = img.width * scale;
+            canvas.height = img.height * scale;
+            const ctx = canvas.getContext('2d')!;
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.scale(scale, scale);
+            ctx.drawImage(img, 0, 0);
+
+            const pdf = new jsPDF({
+              orientation: img.width > img.height ? 'landscape' : 'portrait',
+              unit: 'mm',
+              format: 'a3',
+            });
+
+            const pdfW = pdf.internal.pageSize.getWidth();
+            const pdfH = pdf.internal.pageSize.getHeight();
+            const margin = 10;
+            const availW = pdfW - margin * 2;
+            const availH = pdfH - margin * 2;
+            const ratio = Math.min(availW / img.width, availH / img.height);
+
+            const imgData = canvas.toDataURL('image/png');
+            pdf.addImage(imgData, 'PNG', margin, margin, img.width * ratio, img.height * ratio);
+
+            // Add info footer
+            pdf.setFontSize(8);
+            pdf.setTextColor(128);
+            pdf.text(
+              `DSG WEAR | ${state.garmentType!.toUpperCase()} | ${state.fabric.name} | SA: ${pattern.seamAllowance}cm | Scale: check ruler`,
+              margin,
+              pdfH - 5
+            );
+
+            // Add scale ruler (10cm = known distance)
+            const rulerY = pdfH - 15;
+            const rulerLen = 10 * ratio * 3; // 10cm at SVG scale
+            pdf.setDrawColor(0);
+            pdf.setLineWidth(0.3);
+            pdf.line(margin, rulerY, margin + rulerLen, rulerY);
+            pdf.line(margin, rulerY - 2, margin, rulerY + 2);
+            pdf.line(margin + rulerLen, rulerY - 2, margin + rulerLen, rulerY + 2);
+            pdf.setFontSize(7);
+            pdf.setTextColor(0);
+            pdf.text('10 cm', margin + rulerLen / 2, rulerY - 3, { align: 'center' });
+
+            pdf.save(`dsgwear-${state.garmentType}-pattern.pdf`);
+            toast.success('PDF exported with scale ruler');
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        };
+        img.onerror = reject;
+        img.src = url;
+      });
+
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
+      toast.error('PDF export failed');
+    }
+    setExporting(null);
   };
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-semibold text-foreground">Export Pattern</h2>
-        <p className="text-sm text-muted-foreground mt-1">Download your production-ready pattern files</p>
+        <p className="text-sm text-muted-foreground mt-1">Download production-ready pattern files</p>
       </div>
 
       {/* Summary */}
@@ -38,18 +161,42 @@ export default function ExportStep() {
             </p>
           </div>
           <div>
-            <span className="text-muted-foreground text-xs">Elasticity</span>
-            <p className="font-mono text-foreground text-xs">{state.fabric.elasticity}%</p>
+            <span className="text-muted-foreground text-xs">Pieces / Seam</span>
+            <p className="font-mono text-foreground text-xs">{pattern?.pieces.length ?? 0} pieces / {pattern?.seamAllowance ?? 1.5}cm SA</p>
           </div>
         </div>
+
+        {pattern && pattern.fabricAdjustments.length > 0 && (
+          <div className="mt-2 pt-2 border-t border-border">
+            <p className="text-[10px] font-mono text-muted-foreground mb-1">ADJUSTMENTS:</p>
+            {pattern.fabricAdjustments.map((a, i) => (
+              <p key={i} className="text-[11px] text-muted-foreground">▸ {a}</p>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Export options */}
       <div className="grid grid-cols-1 gap-3">
         {[
-          { format: 'PDF', desc: 'Printable pattern sheets with annotations', icon: '📄' },
-          { format: 'DXF', desc: 'For CNC cutting machines (CAD standard)', icon: '⚙️' },
-          { format: 'SVG', desc: 'Scalable vector for digital use', icon: '🖼️' },
+          {
+            format: 'PDF',
+            desc: 'A3 printable sheet with scale ruler, annotations & cutting guides',
+            icon: FileText,
+            handler: handleExportPDF,
+          },
+          {
+            format: 'DXF',
+            desc: 'AutoCAD-compatible format for CNC plotters & cutting machines',
+            icon: Settings,
+            handler: handleExportDXF,
+          },
+          {
+            format: 'SVG',
+            desc: 'Scalable vector with all pattern details for digital workflows',
+            icon: Image,
+            handler: handleExportSVG,
+          },
         ].map((opt, i) => (
           <motion.div
             key={opt.format}
@@ -60,13 +207,19 @@ export default function ExportStep() {
             <Button
               variant="outline"
               className="w-full justify-start h-auto py-4 px-5 border-border hover:border-primary/50 hover:bg-secondary/50"
-              onClick={() => handleExport(opt.format)}
+              onClick={opt.handler}
+              disabled={exporting !== null}
             >
-              <span className="text-xl mr-4">{opt.icon}</span>
-              <div className="text-left">
+              {exporting === opt.format ? (
+                <Loader2 size={20} className="mr-4 animate-spin text-primary" />
+              ) : (
+                <opt.icon size={20} className="mr-4 text-primary" />
+              )}
+              <div className="text-left flex-1">
                 <p className="font-semibold text-foreground">Export as {opt.format}</p>
                 <p className="text-xs text-muted-foreground">{opt.desc}</p>
               </div>
+              <Download size={16} className="text-muted-foreground" />
             </Button>
           </motion.div>
         ))}
