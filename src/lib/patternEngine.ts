@@ -55,9 +55,23 @@ function adj(value: number, fabric: FabricProperties, type: 'width' | 'length'):
   return Math.round(v * 10) / 10;
 }
 
+const GARMENT_EASE: Record<GarmentType, number> = {
+  tshirt: 6,
+  'dress-shirt': 8,
+  polo: 6,
+  dress: 6,
+  trousers: 4,
+  skirt: 3,
+  jacket: 10,
+  coat: 12,
+  shorts: 4,
+  hoodie: 8,
+  sweatshirt: 7,
+  vest: 6,
+};
+
 function ease(gt: GarmentType, f: FabricProperties): number {
-  const base: Record<GarmentType, number> = { top: 6, shirt: 8, dress: 6, trousers: 4 };
-  let e = base[gt];
+  let e = GARMENT_EASE[gt];
   if (f.elasticity > 20) e *= 0.5;
   if (f.elasticity > 40) e *= 0.3;
   return e;
@@ -94,6 +108,46 @@ function offsetPolygonPath(points: PatternPoint[], dist: number): string {
 
 const S = 3; // scale: 1cm = 3px
 
+function addRectPiece(
+  pieces: PatternPiece[],
+  {
+    id,
+    name,
+    width,
+    height,
+    sa,
+    notchType = 'single',
+  }: {
+    id: string;
+    name: string;
+    width: number;
+    height: number;
+    sa: number;
+    notchType?: PatternNotch['type'];
+  }
+) {
+  const pts: PatternPoint[] = [
+    { x: 0, y: 0 },
+    { x: width * S, y: 0 },
+    { x: width * S, y: height * S },
+    { x: 0, y: height * S },
+  ];
+  const path = `M0,0 L${(width * S).toFixed(1)},0 L${(width * S).toFixed(1)},${(height * S).toFixed(1)} L0,${(height * S).toFixed(1)} Z`;
+  pieces.push({
+    id,
+    name,
+    pathCommands: path,
+    points: pts,
+    width,
+    height,
+    darts: [],
+    notches: [{ position: { x: width * 0.5 * S, y: 0 }, type: notchType }],
+    annotations: [{ position: { x: width * 0.5 * S, y: -10 }, label: name, value: `${width.toFixed(1)}x${height.toFixed(1)}cm` }],
+    grainLine: { start: { x: width * 0.5 * S, y: 8 }, end: { x: width * 0.5 * S, y: height * S - 8 } },
+    seamAllowancePath: offsetPolygonPath(pts, sa * S),
+  });
+}
+
 export function generatePattern(
   m: BodyMeasurements,
   fabric: FabricProperties,
@@ -112,9 +166,12 @@ export function generatePattern(
   }
 
   const pieces: PatternPiece[] = [];
+  const lowerBodyOnly = gt === 'trousers' || gt === 'shorts' || gt === 'skirt';
+  const sleevedTop = gt !== 'vest' && gt !== 'skirt' && gt !== 'trousers' && gt !== 'shorts';
 
   // Adjusted measurements (half-body)
-  const hBust = adj((m.bust + easeVal) / 2, fabric, 'width');
+  const torsoCirc = gt === 'dress' ? m.bust : m.chest || m.bust;
+  const hBust = adj((torsoCirc + easeVal) / 2, fabric, 'width');
   const hWaist = adj((m.waist + easeVal) / 2, fabric, 'width');
   const hHip = adj((m.hip + easeVal) / 2, fabric, 'width');
   const shW = adj(m.shoulderWidth / 2, fabric, 'width');
@@ -122,7 +179,7 @@ export function generatePattern(
   const gLen = adj(m.garmentLength, fabric, 'length');
   const slLen = adj(m.sleeveLength, fabric, 'length');
 
-  if (gt !== 'trousers') {
+  if (!lowerBodyOnly) {
     // ===== FRONT BODICE =====
     const fbW = hBust / 2;
     const neckW = shW * 0.35;
@@ -226,51 +283,53 @@ export function generatePattern(
       seamAllowancePath: offsetPolygonPath(bbPts, sa * S),
     });
 
-    // ===== SLEEVE =====
-    const slW = armD * 1.15;
-    const capH = armD * 0.45;
-    const wristW = slW * 0.7;
-    const slPts: PatternPoint[] = [
-      { x: 0, y: capH * S },
-      { x: slW * 0.2 * S, y: capH * 0.3 * S },
-      { x: slW * 0.5 * S, y: 0 },
-      { x: slW * 0.8 * S, y: capH * 0.3 * S },
-      { x: slW * S, y: capH * S },
-      { x: (slW - (slW - wristW) / 2) * S, y: (capH + slLen) * S },
-      { x: ((slW - wristW) / 2) * S, y: (capH + slLen) * S },
-    ];
+    if (sleevedTop) {
+      // ===== SLEEVE =====
+      const slW = armD * 1.15;
+      const capH = armD * 0.45;
+      const wristW = slW * 0.7;
+      const slPts: PatternPoint[] = [
+        { x: 0, y: capH * S },
+        { x: slW * 0.2 * S, y: capH * 0.3 * S },
+        { x: slW * 0.5 * S, y: 0 },
+        { x: slW * 0.8 * S, y: capH * 0.3 * S },
+        { x: slW * S, y: capH * S },
+        { x: (slW - (slW - wristW) / 2) * S, y: (capH + slLen) * S },
+        { x: ((slW - wristW) / 2) * S, y: (capH + slLen) * S },
+      ];
 
-    const slPath = `M${slPts[0].x.toFixed(1)},${slPts[0].y.toFixed(1)} ` +
-      `C${slPts[1].x.toFixed(1)},${slPts[1].y.toFixed(1)} ${slPts[1].x.toFixed(1)},${slPts[1].y.toFixed(1)} ${slPts[2].x.toFixed(1)},${slPts[2].y.toFixed(1)} ` +
-      `C${slPts[3].x.toFixed(1)},${slPts[3].y.toFixed(1)} ${slPts[3].x.toFixed(1)},${slPts[3].y.toFixed(1)} ${slPts[4].x.toFixed(1)},${slPts[4].y.toFixed(1)} ` +
-      `L${slPts[5].x.toFixed(1)},${slPts[5].y.toFixed(1)} ` +
-      `L${slPts[6].x.toFixed(1)},${slPts[6].y.toFixed(1)} Z`;
+      const slPath = `M${slPts[0].x.toFixed(1)},${slPts[0].y.toFixed(1)} ` +
+        `C${slPts[1].x.toFixed(1)},${slPts[1].y.toFixed(1)} ${slPts[1].x.toFixed(1)},${slPts[1].y.toFixed(1)} ${slPts[2].x.toFixed(1)},${slPts[2].y.toFixed(1)} ` +
+        `C${slPts[3].x.toFixed(1)},${slPts[3].y.toFixed(1)} ${slPts[3].x.toFixed(1)},${slPts[3].y.toFixed(1)} ${slPts[4].x.toFixed(1)},${slPts[4].y.toFixed(1)} ` +
+        `L${slPts[5].x.toFixed(1)},${slPts[5].y.toFixed(1)} ` +
+        `L${slPts[6].x.toFixed(1)},${slPts[6].y.toFixed(1)} Z`;
 
-    pieces.push({
-      id: 'sleeve',
-      name: 'Sleeve',
-      pathCommands: slPath,
-      points: slPts,
-      width: slW, height: capH + slLen,
-      darts: [],
-      notches: [
-        { position: { x: slW * 0.5 * S, y: 0 }, type: 'triangle' },
-        { position: { x: 0, y: capH * S }, type: 'single' },
-        { position: { x: slW * S, y: capH * S }, type: 'single' },
-      ],
-      annotations: [
-        { position: { x: slW * S + 18, y: (capH + slLen / 2) * S }, label: 'Length', value: `${slLen.toFixed(1)}cm`, angle: 90 },
-        { position: { x: slW * 0.5 * S, y: (capH + slLen) * S + 18 }, label: 'Wrist', value: `${wristW.toFixed(1)}cm` },
-        { position: { x: slW * 0.5 * S, y: capH * S + 10 }, label: 'Bicep', value: `${slW.toFixed(1)}cm` },
-      ],
-      grainLine: { start: { x: slW * 0.5 * S, y: capH * 0.5 * S }, end: { x: slW * 0.5 * S, y: (capH + slLen) * S - 15 } },
-      seamAllowancePath: offsetPolygonPath(slPts, sa * S),
-    });
+      pieces.push({
+        id: 'sleeve',
+        name: 'Sleeve',
+        pathCommands: slPath,
+        points: slPts,
+        width: slW, height: capH + slLen,
+        darts: [],
+        notches: [
+          { position: { x: slW * 0.5 * S, y: 0 }, type: 'triangle' },
+          { position: { x: 0, y: capH * S }, type: 'single' },
+          { position: { x: slW * S, y: capH * S }, type: 'single' },
+        ],
+        annotations: [
+          { position: { x: slW * S + 18, y: (capH + slLen / 2) * S }, label: 'Length', value: `${slLen.toFixed(1)}cm`, angle: 90 },
+          { position: { x: slW * 0.5 * S, y: (capH + slLen) * S + 18 }, label: 'Wrist', value: `${wristW.toFixed(1)}cm` },
+          { position: { x: slW * 0.5 * S, y: capH * S + 10 }, label: 'Bicep', value: `${slW.toFixed(1)}cm` },
+        ],
+        grainLine: { start: { x: slW * 0.5 * S, y: capH * 0.5 * S }, end: { x: slW * 0.5 * S, y: (capH + slLen) * S - 15 } },
+        seamAllowancePath: offsetPolygonPath(slPts, sa * S),
+      });
+    }
 
-    // ===== COLLAR (shirt only) =====
-    if (gt === 'shirt') {
+    // ===== GARMENT-SPECIFIC EXTRAS =====
+    if (gt === 'dress-shirt' || gt === 'polo') {
       const collarLen = neckW * 2 * Math.PI * 0.55; // approximate neck circumference portion
-      const collarH = 4; // cm stand height
+      const collarH = gt === 'polo' ? 3 : 4; // cm stand height
       const colPts: PatternPoint[] = [
         { x: 0, y: 0 },
         { x: collarLen * S, y: 0 },
@@ -298,16 +357,45 @@ export function generatePattern(
         grainLine: { start: { x: collarLen * 0.5 * S, y: 3 }, end: { x: collarLen * 0.5 * S, y: collarH * S - 3 } },
         seamAllowancePath: offsetPolygonPath(colPts, sa * S),
       });
+
+      if (gt === 'dress-shirt') {
+        addRectPiece(pieces, { id: 'cuff', name: 'Cuff', width: m.cuffOpening + 4, height: 7, sa, notchType: 'double' });
+        addRectPiece(pieces, { id: 'front-placket', name: 'Front Placket', width: gLen, height: 4, sa });
+      } else {
+        addRectPiece(pieces, { id: 'polo-placket', name: 'Polo Placket', width: 16, height: 4, sa });
+      }
+    }
+
+    if (gt === 'hoodie') {
+      addRectPiece(pieces, { id: 'hood-band', name: 'Hood Band', width: m.hoodDepth, height: Math.max(4, m.hoodHeight * 0.2), sa, notchType: 'triangle' });
+      addRectPiece(pieces, { id: 'rib-cuff', name: 'Rib Cuff', width: m.wrist + 3, height: 8, sa });
+      addRectPiece(pieces, { id: 'rib-hem', name: 'Rib Hem', width: hHip * 2, height: 8, sa });
+    }
+
+    if (gt === 'sweatshirt') {
+      addRectPiece(pieces, { id: 'rib-cuff', name: 'Rib Cuff', width: m.wrist + 2, height: 7, sa });
+      addRectPiece(pieces, { id: 'rib-hem', name: 'Rib Hem', width: hHip * 2, height: 7, sa });
+      addRectPiece(pieces, { id: 'neck-rib', name: 'Neck Rib', width: m.neck + 4, height: 5, sa });
+    }
+
+    if (gt === 'jacket' || gt === 'coat' || gt === 'vest') {
+      addRectPiece(pieces, { id: 'front-facing', name: 'Front Facing', width: gLen, height: gt === 'coat' ? 9 : 7, sa, notchType: 'double' });
+      addRectPiece(pieces, { id: 'pocket-welt', name: 'Pocket Welt', width: 14, height: 4, sa });
+    }
+
+    if (gt === 'coat') {
+      addRectPiece(pieces, { id: 'back-vent', name: 'Back Vent Facing', width: 24, height: 8, sa });
     }
   }
 
-  // ===== TROUSERS =====
-  if (gt === 'trousers') {
-    const inseam = gLen * 0.6;
-    const rise = gLen - inseam;
+  // ===== TROUSERS / SHORTS =====
+  if (gt === 'trousers' || gt === 'shorts') {
+    const outseam = adj(m.outseam, fabric, 'length');
+    const inseam = gt === 'shorts' ? adj(Math.max(12, m.inseam * 0.35), fabric, 'length') : adj(m.inseam, fabric, 'length');
+    const rise = outseam - inseam;
     const thighW = hHip * 0.55;
     const kneeW = thighW * 0.8;
-    const hemW = thighW * 0.7;
+    const hemW = gt === 'shorts' ? thighW * 0.9 : thighW * 0.7;
     const crotchExt = thighW * 0.15;
 
     // FRONT LEG
@@ -318,8 +406,8 @@ export function generatePattern(
       { x: thighW * S, y: rise * S },                             // crotch side
       { x: (thighW + crotchExt) * S, y: rise * S },              // crotch extension
       { x: kneeW * S, y: (rise + inseam * 0.55) * S },           // knee outer
-      { x: hemW * S, y: gLen * S },                               // hem outer
-      { x: (thighW - hemW) * 0.3 * S, y: gLen * S },             // hem inner
+      { x: hemW * S, y: outseam * S },                               // hem outer
+      { x: (thighW - hemW) * 0.3 * S, y: outseam * S },             // hem inner
       { x: (thighW - kneeW) * 0.3 * S, y: (rise + inseam * 0.55) * S }, // knee inner
       { x: crotchExt * 0.5 * S, y: rise * S },                   // crotch inner
       { x: 0, y: rise * 0.7 * S },                               // front rise
@@ -331,7 +419,7 @@ export function generatePattern(
       name: 'Front Leg',
       pathCommands: fPath,
       points: fPts,
-      width: thighW + crotchExt, height: gLen,
+      width: thighW + crotchExt, height: outseam,
       darts: [],
       notches: [
         { position: { x: kneeW * 0.5 * S, y: (rise + inseam * 0.55) * S }, type: 'single' },
@@ -339,10 +427,10 @@ export function generatePattern(
       annotations: [
         { position: { x: hWaist / 4 * S, y: -12 }, label: 'Waist', value: `${(hWaist / 2).toFixed(1)}cm` },
         { position: { x: thighW * S + 20, y: rise * 0.5 * S }, label: 'Rise', value: `${rise.toFixed(1)}cm`, angle: 90 },
-        { position: { x: hemW * 0.5 * S, y: gLen * S + 18 }, label: 'Hem', value: `${hemW.toFixed(1)}cm` },
-        { position: { x: -25, y: gLen * 0.5 * S }, label: 'Full Length', value: `${gLen.toFixed(1)}cm`, angle: -90 },
+        { position: { x: hemW * 0.5 * S, y: outseam * S + 18 }, label: 'Hem', value: `${hemW.toFixed(1)}cm` },
+        { position: { x: -25, y: outseam * 0.5 * S }, label: gt === 'shorts' ? 'Length' : 'Full Length', value: `${outseam.toFixed(1)}cm`, angle: -90 },
       ],
-      grainLine: { start: { x: thighW * 0.4 * S, y: 15 }, end: { x: thighW * 0.4 * S, y: gLen * S - 15 } },
+      grainLine: { start: { x: thighW * 0.4 * S, y: 15 }, end: { x: thighW * 0.4 * S, y: outseam * S - 15 } },
       seamAllowancePath: offsetPolygonPath(fPts, sa * S),
     });
 
@@ -358,8 +446,8 @@ export function generatePattern(
       { x: bThighW * S, y: rise * S },
       { x: (bThighW + bCrotchExt) * S, y: rise * S },
       { x: bKneeW * S, y: (rise + inseam * 0.55) * S },
-      { x: bHemW * S, y: gLen * S },
-      { x: (bThighW - bHemW) * 0.3 * S, y: gLen * S },
+      { x: bHemW * S, y: outseam * S },
+      { x: (bThighW - bHemW) * 0.3 * S, y: outseam * S },
       { x: (bThighW - bKneeW) * 0.3 * S, y: (rise + inseam * 0.55) * S },
       { x: bCrotchExt * 0.3 * S, y: rise * S },
       { x: -1 * S, y: rise * 0.6 * S },
@@ -378,16 +466,16 @@ export function generatePattern(
       name: 'Back Leg',
       pathCommands: bPath,
       points: bPts,
-      width: bThighW + bCrotchExt, height: gLen + 1,
+      width: bThighW + bCrotchExt, height: outseam + 1,
       darts: [backDart],
       notches: [
         { position: { x: bKneeW * 0.5 * S, y: (rise + inseam * 0.55) * S }, type: 'double' },
       ],
       annotations: [
         { position: { x: hWaist / 4 * S, y: -20 }, label: 'Waist', value: `${(hWaist / 2 + 2).toFixed(1)}cm` },
-        { position: { x: bHemW * 0.5 * S, y: gLen * S + 18 }, label: 'Hem', value: `${bHemW.toFixed(1)}cm` },
+        { position: { x: bHemW * 0.5 * S, y: outseam * S + 18 }, label: 'Hem', value: `${bHemW.toFixed(1)}cm` },
       ],
-      grainLine: { start: { x: bThighW * 0.4 * S, y: 15 }, end: { x: bThighW * 0.4 * S, y: gLen * S - 15 } },
+      grainLine: { start: { x: bThighW * 0.4 * S, y: 15 }, end: { x: bThighW * 0.4 * S, y: outseam * S - 15 } },
       seamAllowancePath: offsetPolygonPath(bPts, sa * S),
     });
 
@@ -421,6 +509,58 @@ export function generatePattern(
       grainLine: { start: { x: 15, y: wbH * 0.5 * S }, end: { x: wbLen * S - 15, y: wbH * 0.5 * S } },
       seamAllowancePath: offsetPolygonPath(wbPts, sa * S),
     });
+  }
+
+  // ===== SKIRT =====
+  if (gt === 'skirt') {
+    const skirtLen = adj(m.skirtLength, fabric, 'length');
+    const waistHalf = adj((m.waist + easeVal) / 2, fabric, 'width');
+    const hipHalf = adj((m.hip + easeVal) / 2, fabric, 'width');
+    const hemHalf = hipHalf * 1.18;
+    const frontPts: PatternPoint[] = [
+      { x: 0, y: 0 },
+      { x: waistHalf * S, y: 0 },
+      { x: hipHalf * S, y: skirtLen * 0.35 * S },
+      { x: hemHalf * S, y: skirtLen * S },
+      { x: 0, y: skirtLen * S },
+    ];
+    const backPts: PatternPoint[] = [
+      { x: 0, y: 0 },
+      { x: waistHalf * S, y: 0 },
+      { x: hipHalf * 1.02 * S, y: skirtLen * 0.35 * S },
+      { x: hemHalf * 1.04 * S, y: skirtLen * S },
+      { x: -1.5 * S, y: skirtLen * S },
+    ];
+    const frontPath = frontPts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ') + ' Z';
+    const backPath = backPts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ') + ' Z';
+
+    pieces.push({
+      id: 'front-skirt',
+      name: 'Front Skirt',
+      pathCommands: frontPath,
+      points: frontPts,
+      width: hemHalf,
+      height: skirtLen,
+      darts: [],
+      notches: [{ position: { x: hipHalf * S, y: skirtLen * 0.35 * S }, type: 'single' }],
+      annotations: [{ position: { x: waistHalf * 0.5 * S, y: -10 }, label: 'Waist', value: `${waistHalf.toFixed(1)}cm` }],
+      grainLine: { start: { x: waistHalf * 0.5 * S, y: 10 }, end: { x: waistHalf * 0.5 * S, y: skirtLen * S - 10 } },
+      seamAllowancePath: offsetPolygonPath(frontPts, sa * S),
+    });
+    pieces.push({
+      id: 'back-skirt',
+      name: 'Back Skirt',
+      pathCommands: backPath,
+      points: backPts,
+      width: hemHalf * 1.04,
+      height: skirtLen,
+      darts: [],
+      notches: [{ position: { x: hipHalf * 0.95 * S, y: skirtLen * 0.35 * S }, type: 'double' }],
+      annotations: [{ position: { x: waistHalf * 0.5 * S, y: -10 }, label: 'Length', value: `${skirtLen.toFixed(1)}cm` }],
+      grainLine: { start: { x: waistHalf * 0.5 * S, y: 10 }, end: { x: waistHalf * 0.5 * S, y: skirtLen * S - 10 } },
+      seamAllowancePath: offsetPolygonPath(backPts, sa * S),
+    });
+    addRectPiece(pieces, { id: 'skirt-waistband', name: 'Waistband', width: waistHalf * 2 + 3, height: 6, sa });
   }
 
   // Dress extension: add skirt panel
@@ -598,3 +738,4 @@ export function patternToDXF(pattern: GeneratedPattern): string {
   dxf += `0\nENDSEC\n0\nEOF\n`;
   return dxf;
 }
+

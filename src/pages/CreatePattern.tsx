@@ -1,13 +1,16 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useWorkflow, WorkflowProvider } from '@/contexts/WorkflowContext';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import GarmentTypeStep from '@/components/workflow/GarmentTypeStep';
 import MeasurementsStep from '@/components/workflow/MeasurementsStep';
 import FabricStep from '@/components/workflow/FabricStep';
 import PatternPreviewStep from '@/components/workflow/PatternPreviewStep';
 import ExportStep from '@/components/workflow/ExportStep';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Home } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Home, Save, FolderOpen } from 'lucide-react';
+import { saveProjectSnapshot, getLatestProject } from '@/lib/projectStorage';
+import { toast } from 'sonner';
 
 const STEPS = [
   { label: 'Garment', shortLabel: 'Type' },
@@ -18,16 +21,49 @@ const STEPS = [
 ];
 
 function WorkflowContent() {
-  const { state, setStep, canProceed } = useWorkflow();
+  const { state, setStep, setProjectName, loadProject, canProceed } = useWorkflow();
   const navigate = useNavigate();
 
   const StepComponent = [GarmentTypeStep, MeasurementsStep, FabricStep, PatternPreviewStep, ExportStep][state.step];
+  const canSave = state.garmentType !== null;
+
+  const handleSave = () => {
+    if (!state.garmentType) {
+      toast.error('Select a garment first before saving.');
+      return;
+    }
+
+    const fallbackName = `${state.garmentType}-${new Date().toISOString().slice(0, 10)}`;
+    const name = state.projectName.trim() || fallbackName;
+
+    saveProjectSnapshot({
+      name,
+      step: state.step,
+      garmentType: state.garmentType,
+      measurements: state.measurements,
+      fabric: state.fabric,
+      unit: state.unit,
+    });
+
+    setProjectName(name);
+    toast.success(`Saved project "${name}"`);
+  };
+
+  const handleLoadLatest = () => {
+    const latest = getLatestProject();
+    if (!latest) {
+      toast.error('No saved projects found.');
+      return;
+    }
+    loadProject(latest);
+    toast.success(`Loaded "${latest.name}"`);
+  };
 
   return (
     <div className="min-h-screen bg-background blueprint-grid">
       {/* Header */}
       <header className="border-b border-border bg-card/80 backdrop-blur-sm sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto px-6 py-3 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between gap-3">
           <button onClick={() => navigate('/')} className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
             <Home size={16} />
             <span className="font-mono text-xs">DSG WEAR</span>
@@ -55,6 +91,21 @@ function WorkflowContent() {
                 <span className="hidden md:inline">{step.shortLabel}</span>
               </button>
             ))}
+          </div>
+
+          <div className="hidden lg:flex items-center gap-2">
+            <Input
+              value={state.projectName}
+              onChange={e => setProjectName(e.target.value)}
+              placeholder="Project name"
+              className="h-8 w-44 text-xs font-mono"
+            />
+            <Button variant="outline" size="sm" className="h-8 gap-1 text-xs" onClick={handleLoadLatest}>
+              <FolderOpen size={13} /> Load
+            </Button>
+            <Button size="sm" className="h-8 gap-1 text-xs" onClick={handleSave} disabled={!canSave}>
+              <Save size={13} /> Save
+            </Button>
           </div>
         </div>
       </header>
