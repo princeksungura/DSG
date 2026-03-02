@@ -60,7 +60,7 @@ function WorkflowContent() {
   };
 
   return (
-    <div className="min-h-screen bg-background blueprint-grid">
+    <div className="min-h-screen graph-paper-bg">
       {/* Header */}
       <header className="border-b border-border bg-card/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between gap-3">

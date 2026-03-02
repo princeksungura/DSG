@@ -7,47 +7,47 @@
 @layer base {
   :root {
     --background: 222 47% 6%;
-    --foreground: 210 40% 92%;
+    --foreground: 210 18% 78%;
 
     --card: 222 44% 9%;
-    --card-foreground: 210 40% 92%;
+    --card-foreground: 210 18% 78%;
 
     --popover: 222 44% 9%;
-    --popover-foreground: 210 40% 92%;
+    --popover-foreground: 210 18% 78%;
 
-    --primary: 186 100% 50%;
-    --primary-foreground: 222 47% 6%;
+    --primary: 200 40% 58%;
+    --primary-foreground: 210 35% 12%;
 
     --secondary: 222 30% 16%;
-    --secondary-foreground: 210 40% 85%;
+    --secondary-foreground: 210 14% 74%;
 
     --muted: 222 30% 14%;
-    --muted-foreground: 215 20% 55%;
+    --muted-foreground: 210 14% 62%;
 
-    --accent: 186 80% 42%;
-    --accent-foreground: 222 47% 6%;
+    --accent: 202 28% 24%;
+    --accent-foreground: 210 24% 88%;
 
     --destructive: 0 72% 51%;
     --destructive-foreground: 210 40% 98%;
 
     --border: 222 30% 18%;
     --input: 222 30% 18%;
-    --ring: 186 100% 50%;
+    --ring: 200 42% 56%;
 
     --radius: 0.5rem;
 
     --sidebar-background: 222 44% 8%;
-    --sidebar-foreground: 210 40% 85%;
-    --sidebar-primary: 186 100% 50%;
-    --sidebar-primary-foreground: 222 47% 6%;
+    --sidebar-foreground: 210 14% 74%;
+    --sidebar-primary: 200 40% 58%;
+    --sidebar-primary-foreground: 210 35% 12%;
     --sidebar-accent: 222 30% 14%;
-    --sidebar-accent-foreground: 210 40% 85%;
+    --sidebar-accent-foreground: 210 14% 74%;
     --sidebar-border: 222 30% 18%;
-    --sidebar-ring: 186 100% 50%;
+    --sidebar-ring: 200 42% 56%;
 
     /* Custom DSG tokens */
-    --cyan-glow: 186 100% 50%;
-    --cyan-dim: 186 60% 30%;
+    --cyan-glow: 198 45% 56%;
+    --cyan-dim: 198 28% 34%;
     --grid-line: 222 30% 14%;
     --surface-elevated: 222 40% 12%;
     --success: 152 69% 45%;
@@ -73,6 +73,17 @@
 }
 
 @layer utilities {
+  .graph-paper-bg {
+    background-color: #040608;
+    background-image:
+      linear-gradient(to right, rgba(40, 48, 56, 0.28) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(40, 48, 56, 0.28) 1px, transparent 1px),
+      linear-gradient(to right, rgba(58, 68, 78, 0.22) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(58, 68, 78, 0.22) 1px, transparent 1px);
+    background-size: 32px 32px, 32px 32px, 160px 160px, 160px 160px;
+    background-position: -1px -1px, -1px -1px, -1px -1px, -1px -1px;
+  }
+
   .blueprint-grid {
     background-image:
       linear-gradient(hsl(var(--grid-line) / 0.5) 1px, transparent 1px),
