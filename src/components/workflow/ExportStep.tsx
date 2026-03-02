@@ -4,8 +4,9 @@ import { useWorkflow } from '@/contexts/WorkflowContext';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { generatePattern, patternToSVG, patternToDXF } from '@/lib/patternEngine';
+import { GARMENT_IMAGES } from '@/assets/garments';
 import jsPDF from 'jspdf';
-import { Download, FileText, Settings, Image, Loader2 } from 'lucide-react';
+import { Download, FileText, Settings, Image, Loader2, Eye, EyeOff } from 'lucide-react';
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -21,18 +22,23 @@ function downloadBlob(blob: Blob, filename: string) {
 export default function ExportStep() {
   const { state } = useWorkflow();
   const [exporting, setExporting] = useState<string | null>(null);
+  const [showPreview, setShowPreview] = useState(true);
 
   const pattern = useMemo(() => {
     if (!state.garmentType) return null;
     return generatePattern(state.measurements, state.fabric, state.garmentType);
   }, [state.measurements, state.fabric, state.garmentType]);
 
+  const svgString = useMemo(() => {
+    if (!pattern || !state.garmentType) return null;
+    return patternToSVG(pattern, state.garmentType, state.fabric.name);
+  }, [pattern, state.garmentType, state.fabric.name]);
+
   const handleExportSVG = () => {
-    if (!pattern || !state.garmentType) return;
+    if (!svgString) return;
     setExporting('SVG');
     try {
-      const svgStr = patternToSVG(pattern, state.garmentType, state.fabric.name);
-      const blob = new Blob([svgStr], { type: 'image/svg+xml' });
+      const blob = new Blob([svgString], { type: 'image/svg+xml' });
       downloadBlob(blob, `dsgwear-${state.garmentType}-pattern.svg`);
       toast.success('SVG exported successfully');
     } catch (e) {
@@ -56,21 +62,18 @@ export default function ExportStep() {
   };
 
   const handleExportPDF = async () => {
-    if (!pattern || !state.garmentType) return;
+    if (!svgString || !state.garmentType) return;
     setExporting('PDF');
     try {
-      const svgStr = patternToSVG(pattern, state.garmentType, state.fabric.name);
-
-      // Render SVG to canvas then to PDF
       const img = new window.Image();
-      const svgBlob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+      const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
       const url = URL.createObjectURL(svgBlob);
 
       await new Promise<void>((resolve, reject) => {
         img.onload = () => {
           try {
             const canvas = document.createElement('canvas');
-            const scale = 2; // high res
+            const scale = 2;
             canvas.width = img.width * scale;
             canvas.height = img.height * scale;
             const ctx = canvas.getContext('2d')!;
@@ -95,18 +98,16 @@ export default function ExportStep() {
             const imgData = canvas.toDataURL('image/png');
             pdf.addImage(imgData, 'PNG', margin, margin, img.width * ratio, img.height * ratio);
 
-            // Add info footer
             pdf.setFontSize(8);
             pdf.setTextColor(128);
             pdf.text(
-              `DSG WEAR | ${state.garmentType!.toUpperCase()} | ${state.fabric.name} | SA: ${pattern.seamAllowance}cm | Scale: check ruler`,
+              `DSG WEAR | ${state.garmentType!.toUpperCase()} | ${state.fabric.name} | SA: ${pattern!.seamAllowance}cm | Scale: check ruler`,
               margin,
               pdfH - 5
             );
 
-            // Add scale ruler (10cm = known distance)
             const rulerY = pdfH - 15;
-            const rulerLen = 10 * ratio * 3; // 10cm at SVG scale
+            const rulerLen = 10 * ratio * 3;
             pdf.setDrawColor(0);
             pdf.setLineWidth(0.3);
             pdf.line(margin, rulerY, margin + rulerLen, rulerY);
@@ -139,42 +140,85 @@ export default function ExportStep() {
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-semibold text-foreground">Export Pattern</h2>
-        <p className="text-sm text-muted-foreground mt-1">Download production-ready pattern files</p>
+        <p className="text-sm text-muted-foreground mt-1">Review your design and download production-ready pattern files</p>
       </div>
 
-      {/* Summary */}
-      <div className="bg-card rounded-lg border border-border p-4 space-y-3">
-        <h4 className="text-xs font-mono font-semibold text-primary">PROJECT SUMMARY</h4>
-        <div className="grid grid-cols-2 gap-3 text-sm">
-          <div>
-            <span className="text-muted-foreground text-xs">Garment</span>
-            <p className="font-medium text-foreground capitalize">{state.garmentType}</p>
-          </div>
-          <div>
-            <span className="text-muted-foreground text-xs">Fabric</span>
-            <p className="font-medium text-foreground">{state.fabric.name}</p>
-          </div>
-          <div>
-            <span className="text-muted-foreground text-xs">Bust / Waist / Hip</span>
-            <p className="font-mono text-foreground text-xs">
-              {state.measurements.bust} / {state.measurements.waist} / {state.measurements.hip} cm
-            </p>
-          </div>
-          <div>
-            <span className="text-muted-foreground text-xs">Pieces / Seam</span>
-            <p className="font-mono text-foreground text-xs">{pattern?.pieces.length ?? 0} pieces / {pattern?.seamAllowance ?? 1.5}cm SA</p>
-          </div>
-        </div>
-
-        {pattern && pattern.fabricAdjustments.length > 0 && (
-          <div className="mt-2 pt-2 border-t border-border">
-            <p className="text-[10px] font-mono text-muted-foreground mb-1">ADJUSTMENTS:</p>
-            {pattern.fabricAdjustments.map((a, i) => (
-              <p key={i} className="text-[11px] text-muted-foreground">▸ {a}</p>
-            ))}
+      {/* Garment reference photo + summary side by side */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {state.garmentType && (
+          <div className="bg-card rounded-lg border border-border p-4 flex items-center justify-center">
+            <img
+              src={GARMENT_IMAGES[state.garmentType]}
+              alt={`${state.garmentType} reference`}
+              className="max-h-[200px] object-contain rounded"
+            />
           </div>
         )}
+        <div className="bg-card rounded-lg border border-border p-4 space-y-3">
+          <h4 className="text-xs font-mono font-semibold text-primary">PROJECT SUMMARY</h4>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <span className="text-muted-foreground text-xs">Garment</span>
+              <p className="font-medium text-foreground capitalize">{state.garmentType}</p>
+            </div>
+            <div>
+              <span className="text-muted-foreground text-xs">Fabric</span>
+              <p className="font-medium text-foreground">{state.fabric.name}</p>
+            </div>
+            <div>
+              <span className="text-muted-foreground text-xs">Bust / Waist / Hip</span>
+              <p className="font-mono text-foreground text-xs">
+                {state.measurements.bust} / {state.measurements.waist} / {state.measurements.hip} cm
+              </p>
+            </div>
+            <div>
+              <span className="text-muted-foreground text-xs">Pieces / Seam</span>
+              <p className="font-mono text-foreground text-xs">{pattern?.pieces.length ?? 0} pieces / {pattern?.seamAllowance ?? 1.5}cm SA</p>
+            </div>
+          </div>
+          {pattern && pattern.fabricAdjustments.length > 0 && (
+            <div className="mt-2 pt-2 border-t border-border">
+              <p className="text-[10px] font-mono text-muted-foreground mb-1">ADJUSTMENTS:</p>
+              {pattern.fabricAdjustments.map((a, i) => (
+                <p key={i} className="text-[11px] text-muted-foreground">▸ {a}</p>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* Inline Pattern Preview */}
+      {svgString && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-mono font-semibold text-primary">PATTERN PREVIEW</h4>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1.5 text-xs text-muted-foreground"
+              onClick={() => setShowPreview(p => !p)}
+            >
+              {showPreview ? <EyeOff size={13} /> : <Eye size={13} />}
+              {showPreview ? 'Hide' : 'Show'}
+            </Button>
+          </div>
+          {showPreview && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="bg-card rounded-lg border border-border overflow-auto"
+              style={{ maxHeight: 420 }}
+            >
+              <div
+                className="w-full p-2"
+                dangerouslySetInnerHTML={{ __html: svgString }}
+                style={{ background: 'white' }}
+              />
+            </motion.div>
+          )}
+        </div>
+      )}
 
       {/* Export options */}
       <div className="grid grid-cols-1 gap-3">
