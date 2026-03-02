@@ -114,9 +114,10 @@ export default function Index() {
       {/* Footer */}
       <footer className="relative z-10 border-t border-border py-6">
         <p className="text-center text-xs text-muted-foreground font-mono">
-          DSG WEAR — Fabric-Aware Garment Pattern Platform | Made by Hamza for 🥚 
+          DSG WEAR Fabric-ware Garment Pattern Platform | Designed and built by @Whxsmemzy._ and Hamza 
         </p>
       </footer>
     </div>
   );
 }
+
