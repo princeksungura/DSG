@@ -1,6 +1,7 @@
-﻿import { motion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useWorkflow } from '@/contexts/WorkflowContext';
 import { GARMENT_TYPES } from '@/data/fabricData';
+import { GARMENT_IMAGES } from '@/assets/garments';
 
 export default function GarmentTypeStep() {
   const { state, setGarmentType } = useWorkflow();
@@ -22,13 +23,18 @@ export default function GarmentTypeStep() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.04 }}
               onClick={() => setGarmentType(garment.value)}
-              className={`relative p-5 rounded-lg border-2 text-left transition-all ${
+              className={`relative p-4 rounded-lg border-2 text-left transition-all ${
                 selected ? 'border-primary glow-cyan bg-secondary' : 'border-border hover:border-primary/30 bg-card'
               }`}
             >
-              <span className="text-xs font-mono mb-3 inline-flex h-7 w-7 items-center justify-center rounded bg-muted text-foreground">
-                {garment.icon}
-              </span>
+              <div className="w-full aspect-square mb-3 rounded-md overflow-hidden bg-muted/30 flex items-center justify-center">
+                <img
+                  src={GARMENT_IMAGES[garment.value]}
+                  alt={garment.label}
+                  className="w-full h-full object-contain p-2"
+                  loading="lazy"
+                />
+              </div>
               <h3 className="font-semibold text-foreground text-sm">{garment.label}</h3>
               <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{garment.description}</p>
               {selected && (
@@ -36,7 +42,7 @@ export default function GarmentTypeStep() {
                   layoutId="garment-check"
                   className="absolute top-3 right-3 w-6 h-6 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs"
                 >
-                  OK
+                  ✓
                 </motion.div>
               )}
             </motion.button>
