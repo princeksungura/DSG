@@ -1,4 +1,4 @@
-#  DSG -WEARV
+#  DSG -WEAR
 
 Frontend application built with Vite, React, TypeScript, and Tailwind CSS.
 
