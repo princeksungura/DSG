@@ -1,4 +1,4 @@
-# Fabric Fit Studio
+#  DSG -WEARV
 
 Frontend application built with Vite, React, TypeScript, and Tailwind CSS.
 
